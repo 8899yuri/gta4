@@ -1,9 +1,12 @@
 name: Build TGHMod
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -11,15 +14,26 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore TGHMod
+        shell: cmd
+        run: |
+          dotnet restore TGHMod.csproj
+
       - name: Build TGHMod
         shell: cmd
         run: |
-          msbuild TGHMod.csproj /p:Configuration=Release /p:Platform=x86
+          dotnet build TGHMod.csproj -c Release --no-restore -p:Platform=x86
 
       - name: Prepare Package
         shell: cmd
         run: |
-          mkdir release\scripts
+          if not exist release\scripts mkdir release\scripts
+
           copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.net.dll
           copy ScriptHookDotNet.asi release\ScriptHookDotNet.asi
           copy aCompleteEditionHook.asi release\aCompleteEditionHook.asi
