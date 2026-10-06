@@ -1,227 +1,33 @@
-name: Build TGHMod GTA IV CE
-
-on:
-  workflow_dispatch:
+name: Build TGHMod
+on: workflow_dispatch
 
 jobs:
   build:
-    runs-on: windows-2022
-
+    runs-on: windows-latest
     steps:
-      - name: Checkout TGHMod
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Checkout ScriptHookDotNet
-        uses: actions/checkout@v4
-        with:
-          repository: Priler/gta4_scripthookdotnet
-          path: shdn
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      # ========================================
-      # Find ScriptHookDotNet solution
-      # ========================================
-      - name: Find ScriptHookDotNet solution
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          $sln = Get-ChildItem -Path "shdn" -Filter "*.sln" -Recurse |
-            Select-Object -First 1
-
-          if (-not $sln) {
-            throw "ScriptHookDotNet solution not found."
-          }
-
-          Write-Host "Solution found:"
-          Write-Host $sln.FullName
-
-          "SHDN_SLN=$($sln.FullName)" |
-            Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # ========================================
-      # Inspect valid solution configurations
-      # ========================================
-      - name: Inspect ScriptHookDotNet solution
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Host "Checking solution configurations..."
-
-          Select-String `
-            -Path "$env:SHDN_SLN" `
-            -Pattern "SolutionConfigurationPlatforms" `
-            -Context 0,30
-
-      # ========================================
-      # Build ScriptHookDotNet
-      # Do NOT force Platform=x86
-      # ========================================
-      - name: Build ScriptHookDotNet
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Host "Building ScriptHookDotNet using solution configuration..."
-
-          msbuild "$env:SHDN_SLN" `
-            /p:Configuration=Release `
-            /m
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "ScriptHookDotNet build failed."
-          }
-
-      # ========================================
-      # Install .NET Framework 4.0
-      # Reference Assemblies
-      # ========================================
-      - name: Install .NET Framework 4.0 Reference Assemblies
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          Write-Host "Downloading NuGet..."
-
-          Invoke-WebRequest `
-            -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" `
-            -OutFile "$env:RUNNER_TEMP\nuget.exe"
-
-          Write-Host "Installing Microsoft.NETFramework.ReferenceAssemblies..."
-
-          & "$env:RUNNER_TEMP\nuget.exe" install `
-            Microsoft.NETFramework.ReferenceAssemblies `
-            -Version 1.0.3 `
-            -OutputDirectory "$env:RUNNER_TEMP\netfx"
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "NuGet installation failed."
-          }
-
-          Write-Host ""
-          Write-Host "Searching for .NET Framework 4.0 reference assemblies..."
-
-          $ref = Get-ChildItem `
-            -Path "$env:RUNNER_TEMP\netfx" `
-            -Directory `
-            -Recurse `
-            -Filter "v4.0" |
-            Where-Object {
-              Test-Path (Join-Path $_.FullName "mscorlib.dll")
-            } |
-            Select-Object -First 1
-
-          if (-not $ref) {
-            Write-Host ""
-            Write-Host "Installed package contents:"
-            Get-ChildItem "$env:RUNNER_TEMP\netfx" -Recurse |
-              Select-Object FullName
-
-            throw ".NET Framework 4.0 reference assemblies were not found."
-          }
-
-          Write-Host ""
-          Write-Host "FOUND .NET 4.0 REFERENCE ASSEMBLIES:"
-          Write-Host $ref.FullName
-
-          "NET40_REFERENCE_ASSEMBLIES=$($ref.FullName)" |
-            Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # ========================================
-      # Build TGHMod
-      # ========================================
       - name: Build TGHMod
-        shell: powershell
+        shell: cmd
         run: |
-          $ErrorActionPreference = "Stop"
+          msbuild TGHMod.csproj /p:Configuration=Release /p:Platform=x86
 
-          Write-Host "Using .NET 4.0 reference assemblies:"
-          Write-Host "$env:NET40_REFERENCE_ASSEMBLIES"
-
-          if (-not (Test-Path "$env:NET40_REFERENCE_ASSEMBLIES\mscorlib.dll")) {
-            throw "mscorlib.dll was not found."
-          }
-
-          msbuild "TGHMod.csproj" `
-            /p:Configuration=Release `
-            /p:Platform=x86 `
-            /p:TargetFrameworkRootPath="$env:RUNNER_TEMP\netfx\Microsoft.NETFramework.ReferenceAssemblies.1.0.3\build\.NETFramework" `
-            /p:ReferenceAssemblyPaths="$env:NET40_REFERENCE_ASSEMBLIES" `
-            /m
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "TGHMod build failed."
-          }
-
-      # ========================================
-      # Find final DLL
-      # ========================================
-      - name: Check TGHMod output
-        shell: powershell
+      - name: Prepare Package
+        shell: cmd
         run: |
-          $ErrorActionPreference = "Stop"
+          mkdir release\scripts
+          copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.net.dll
+          copy ScriptHookDotNet.asi release\ScriptHookDotNet.asi
+          copy aCompleteEditionHook.asi release\aCompleteEditionHook.asi
+          copy AdvancedHook.dll release\AdvancedHook.dll
+          copy AdvancedHookInit.asi release\AdvancedHookInit.asi
 
-          Write-Host "Searching for TGHMod.net.dll..."
-
-          $dll = Get-ChildItem `
-            -Path "." `
-            -Filter "TGHMod.net.dll" `
-            -Recurse |
-            Select-Object -First 1
-
-          if (-not $dll) {
-            Write-Host ""
-            Write-Host "All DLL files:"
-            Get-ChildItem "." -Filter "*.dll" -Recurse |
-              Select-Object FullName
-
-            throw "TGHMod.net.dll was not found."
-          }
-
-          Write-Host ""
-          Write-Host "SUCCESS:"
-          Write-Host $dll.FullName
-
-          "TGHMOD_DLL=$($dll.FullName)" |
-            Out-File -FilePath $env:GITHUB_ENV -Append
-
-      # ========================================
-      # Package
-      # ========================================
-      - name: Package TGHMod
-        shell: powershell
-        run: |
-          $ErrorActionPreference = "Stop"
-
-          New-Item `
-            -ItemType Directory `
-            -Force `
-            -Path "release\scripts" |
-            Out-Null
-
-          Copy-Item `
-            "$env:TGHMOD_DLL" `
-            "release\scripts\TGHMod.dll"
-
-          if (Test-Path "shdn\bin\Release\ScriptHookDotNet.asi") {
-            Copy-Item `
-              "shdn\bin\Release\ScriptHookDotNet.asi" `
-              "release\"
-          }
-
-          if (Test-Path "shdn\bin\Release\aCompleteEditionHook.asi") {
-            Copy-Item `
-              "shdn\bin\Release\aCompleteEditionHook.asi" `
-              "release\"
-          }
-
-          Write-Host ""
-          Write-Host "FINAL PACKAGE:"
-          Get-ChildItem "release" -Recurse
-
-      # ========================================
-      # Upload
-      # =================================
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TGHMod-GTAIV-CE-FINAL
+          path: release
