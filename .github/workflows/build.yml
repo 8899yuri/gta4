@@ -11,18 +11,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Extract ScriptHookDotNet CE
-        shell: pwsh
-        run: |
-          if (-not (Test-Path "shdn.zip")) {
-            throw "shdn.zip not found."
-          }
-
-          New-Item -ItemType Directory -Force -Path shdn | Out-Null
-          Expand-Archive -Path "shdn.zip" -DestinationPath "shdn" -Force
-
-          Write-Host "Extracted ScriptHookDotNet source:"
-          Get-ChildItem shdn -Recurse -File | Select-Object FullName
+      - name: Checkout ScriptHookDotNet CE
+        uses: actions/checkout@v4
+        with:
+          repository: Priler/gta4_scripthookdotnet
+          path: shdn
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -34,55 +27,167 @@ jobs:
             Select-Object -First 1
 
           if (-not $sln) {
-            throw "ScriptHookDotNet solution not found inside shdn.zip."
+            throw "ScriptHookDotNet solution not found."
           }
 
-          Write-Host "Found solution:"
+          Write-Host "========================================"
+          Write-Host "Found ScriptHookDotNet solution:"
           Write-Host $sln.FullName
+          Write-Host "========================================"
 
           "SLN_PATH=$($sln.FullName)" >> $env:GITHUB_ENV
 
       - name: Build ScriptHookDotNet
         shell: pwsh
         run: |
+          Write-Host "========================================"
+          Write-Host "Building ScriptHookDotNet CE..."
+          Write-Host "========================================"
+
           msbuild "$env:SLN_PATH" /p:Configuration=Release /p:Platform=Win32 /m
 
-      - name: Find ScriptHookDotNet.dll
-        shell: pwsh
-        run: |
-          $dll = Get-ChildItem "shdn" -Filter "ScriptHookDotNet.dll" -Recurse |
-            Where-Object { $_.FullName -notmatch '\\obj\\' } |
-            Select-Object -First 1
-
-          if (-not $dll) {
-            throw "ScriptHookDotNet.dll not found after build."
+          if ($LASTEXITCODE -ne 0) {
+            throw "ScriptHookDotNet build failed with exit code $LASTEXITCODE."
           }
 
-          Write-Host "Found:"
-          Write-Host $dll.FullName
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "ScriptHookDotNet build completed."
+          Write-Host "========================================"
 
-          New-Item -ItemType Directory -Force -Path "shdn\bin" | Out-Null
-          Copy-Item $dll.FullName "shdn\bin\ScriptHookDotNet.dll" -Force
+      - name: Inspect ScriptHookDotNet build output
+        shell: pwsh
+        run: |
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "ALL DLL FILES"
+          Write-Host "========================================"
+
+          $dlls = Get-ChildItem "shdn" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue
+
+          if ($dlls) {
+            $dlls | Select-Object FullName, Length | Format-Table -AutoSize
+          }
+          else {
+            Write-Host "NO DLL FILES FOUND"
+          }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "ALL ASI FILES"
+          Write-Host "========================================"
+
+          $asis = Get-ChildItem "shdn" -Filter "*.asi" -Recurse -ErrorAction SilentlyContinue
+
+          if ($asis) {
+            $asis | Select-Object FullName, Length | Format-Table -AutoSize
+          }
+          else {
+            Write-Host "NO ASI FILES FOUND"
+          }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "ALL EXE FILES"
+          Write-Host "========================================"
+
+          $exes = Get-ChildItem "shdn" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
+
+          if ($exes) {
+            $exes | Select-Object FullName, Length | Format-Table -AutoSize
+          }
+          else {
+            Write-Host "NO EXE FILES FOUND"
+          }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "ALL BIN DIRECTORIES"
+          Write-Host "========================================"
+
+          $bins = Get-ChildItem "shdn" -Directory -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -eq "bin" }
+
+          if ($bins) {
+            $bins | Select-Object FullName | Format-Table -AutoSize
+          }
+          else {
+            Write-Host "NO BIN DIRECTORIES FOUND"
+          }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "RECENTLY MODIFIED FILES"
+          Write-Host "========================================"
+
+          Get-ChildItem "shdn" -Recurse -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 50 FullName, Length, LastWriteTime |
+            Format-Table -AutoSize
+
+      - name: Check TGHMod project
+        shell: pwsh
+        run: |
+          Write-Host "========================================"
+          Write-Host "Checking TGHMod project..."
+          Write-Host "========================================"
+
+          if (Test-Path "TGHMod.csproj") {
+            Write-Host "TGHMod.csproj FOUND."
+          }
+          else {
+            Write-Host "TGHMod.csproj NOT FOUND."
+            Write-Host "The workflow will stop here because TGHMod cannot be compiled."
+            exit 1
+          }
 
       - name: Build TGHMod
         shell: pwsh
         run: |
-          if (-not (Test-Path "TGHMod.csproj")) {
-            throw "TGHMod.csproj not found."
-          }
+          Write-Host "========================================"
+          Write-Host "Building TGHMod..."
+          Write-Host "========================================"
 
           msbuild "TGHMod.csproj" /p:Configuration=Release /p:Platform=x86 /m
 
-          if (-not (Test-Path "bin\TGHMod.net.dll")) {
-            throw "TGHMod.net.dll was not produced."
+          if ($LASTEXITCODE -ne 0) {
+            throw "TGHMod build failed with exit code $LASTEXITCODE."
           }
+
+          Write-Host ""
+          Write-Host "========================================"
+          Write-Host "TGHMod build completed."
+          Write-Host "========================================"
+
+          Write-Host ""
+          Write-Host "TGHMod output files:"
+          Get-ChildItem "bin" -Recurse -File -ErrorAction SilentlyContinue |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
 
       - name: Prepare final package
         shell: pwsh
         run: |
+          Write-Host "========================================"
+          Write-Host "Preparing final package..."
+          Write-Host "========================================"
+
           New-Item -ItemType Directory -Force -Path "release\scripts" | Out-Null
 
-          Copy-Item "bin\TGHMod.net.dll" "release\scripts\TGHMod.dll" -Force
+          $tgh = Get-ChildItem "bin" -Filter "TGHMod.net.dll" -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if (-not $tgh) {
+            Write-Host "TGHMod.net.dll was not found."
+            Write-Host "Available files:"
+            Get-ChildItem "bin" -Recurse -File -ErrorAction SilentlyContinue |
+              Select-Object FullName, Length |
+              Format-Table -AutoSize
+
+            throw "TGHMod.net.dll was not produced."
+          }
+
+          Copy-Item $tgh.FullName "release\scripts\TGHMod.dll" -Force
 
           if (Test-Path "ScriptHookDotNet.asi") {
             Copy-Item "ScriptHookDotNet.asi" "release\ScriptHookDotNet.asi" -Force
@@ -91,6 +196,12 @@ jobs:
           if (Test-Path "aCompleteEditionHook.asi") {
             Copy-Item "aCompleteEditionHook.asi" "release\aCompleteEditionHook.asi" -Force
           }
+
+          Write-Host ""
+          Write-Host "Final package contents:"
+          Get-ChildItem "release" -Recurse -File |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
 
       - name: Upload final package
         uses: actions/upload-artifact@v4
