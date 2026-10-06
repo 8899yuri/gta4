@@ -1,13 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
     <TargetFramework>net48</TargetFramework>
     <OutputType>Library</OutputType>
-    <Platforms>x86</Platforms>
+    <RootNamespace>TGHMod</RootNamespace>
     <AssemblyName>TGHMod.net</AssemblyName>
+    <PlatformTarget>x86</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
+
   <ItemGroup>
+    <!-- GTA IV ScriptHookDotNet -->
     <Reference Include="ScriptHookDotNet">
       <HintPath>ScriptHookDotNet.dll</HintPath>
+      <Private>false</Private>
     </Reference>
+
+    <!-- Windows Forms -->
+    <Reference Include="System.Windows.Forms" />
+
+    <!-- System.Drawing -->
+    <Reference Include="System.Drawing" />
+
+    <!-- Standard .NET Framework assemblies -->
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
   </ItemGroup>
+
 </Project>
