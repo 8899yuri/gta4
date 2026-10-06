@@ -1,0 +1,94 @@
+name: Build GTA IV TGHMod (CE 1.2.0.59)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout mod source
+        uses: actions/checkout@v4
+
+      - name: Checkout CE ScriptHookDotNet source
+        uses: actions/checkout@v4
+        with:
+          repository: Priler/GTAIVScriptHookDotNet
+          path: shdn
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build ScriptHookDotNet
+        shell: powershell
+        run: |
+          $sln = Get-ChildItem -Path shdn -Filter *.sln -Recurse | Select-Object -First 1
+          if (-not $sln) { throw "ScriptHookDotNet solution not found." }
+          msbuild $sln.FullName /p:Configuration=Release /p:Platform=Win32 /m
+
+      - name: Locate ScriptHookDotNet.dll
+        shell: powershell
+        run: |
+          $dll = Get-ChildItem -Path shdn -Filter ScriptHookDotNet.dll -Recurse |
+            Where-Object { $_.FullName -notmatch '\\obj\\' } |
+            Sort-Object FullName |
+            Select-Object -First 1
+          if (-not $dll) { throw "ScriptHookDotNet.dll was not produced." }
+          Write-Host "Using $($dll.FullName)"
+          Copy-Item $dll.FullName "$PWD\shdn\bin\ScriptHookDotNet.dll" -Force
+
+      - name: Build TGHMod
+        shell: powershell
+        run: |
+          msbuild TGHMod.csproj /p:Configuration=Release /p:Platform=x86 /m
+          if (-not (Test-Path "bin\TGHMod.net.dll")) {
+            throw "TGHMod.net.dll was not produced."
+          }
+
+      - name: Collect release
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path release\scripts | Out-Null
+
+          $asi = Get-ChildItem -Path shdn -Filter ScriptHookDotNet.asi -Recurse |
+            Where-Object { $_.FullName -notmatch '\\obj\\' } |
+            Select-Object -First 1
+          if (-not $asi) { throw "ScriptHookDotNet.asi not found." }
+
+          Copy-Item $asi.FullName release\ScriptHookDotNet.asi
+          Copy-Item bin\TGHMod.net.dll release\scripts\TGHMod.net.dll
+
+          $ce = Get-ChildItem -Path shdn -Filter aCompleteEditionHook.asi -Recurse |
+            Select-Object -First 1
+          if ($ce) {
+            Copy-Item $ce.FullName release\aCompleteEditionHook.asi
+          }
+
+          @"
+          TGHMod for GTA IV Complete Edition 1.2.0.59
+
+          Install:
+          1. Put ScriptHookDotNet.asi and aCompleteEditionHook.asi in the GTAIV root.
+          2. Put scripts\TGHMod.net.dll in GTAIV\scripts\.
+          3. Keep your existing compatible dinput8.dll ASI loader.
+          4. Do not replace your existing ScriptHook.dll unless the package explicitly contains one.
+
+          Controls:
+          T = spirit mode
+          Spirit: WASD move, Q/E rotate, Space/Ctrl vertical, arrows pitch, Shift fast, T exit
+          G = possess nearest NPC within 5m
+          H = return to Niko
+
+          Note:
+          This mod uses the real GTA IV player entity internally and synchronizes the
+          selected NPC to it, which avoids trying to swap the game's player handle.
+          "@ | Set-Content release\README.txt -Encoding UTF8
+
+      - name: Upload release
+        uses: actions/upload-artifact@v4
+        with:
+          name: TGHMod-GTAIV-CE-1.2.0.59-FINAL
+          path: release\
