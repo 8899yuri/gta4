@@ -20,7 +20,7 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Find ScriptHookDotNet solution
+      - name: Build ScriptHookDotNet
         shell: pwsh
         run: |
           $sln = Get-ChildItem "shdn" -Filter "*.sln" -Recurse |
@@ -30,178 +30,120 @@ jobs:
             throw "ScriptHookDotNet solution not found."
           }
 
-          Write-Host "========================================"
-          Write-Host "Found ScriptHookDotNet solution:"
+          Write-Host "Building:"
           Write-Host $sln.FullName
-          Write-Host "========================================"
 
-          "SLN_PATH=$($sln.FullName)" >> $env:GITHUB_ENV
-
-      - name: Build ScriptHookDotNet
-        shell: pwsh
-        run: |
-          Write-Host "========================================"
-          Write-Host "Building ScriptHookDotNet CE..."
-          Write-Host "========================================"
-
-          msbuild "$env:SLN_PATH" /p:Configuration=Release /p:Platform=Win32 /m
+          msbuild $sln.FullName `
+            /p:Configuration=Release `
+            /p:Platform=Win32 `
+            /m
 
           if ($LASTEXITCODE -ne 0) {
-            throw "ScriptHookDotNet build failed with exit code $LASTEXITCODE."
+            throw "ScriptHookDotNet build failed."
           }
 
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "ScriptHookDotNet build completed."
-          Write-Host "========================================"
-
-      - name: Inspect ScriptHookDotNet build output
+      - name: Install .NET Framework 4.0 Reference Assemblies
         shell: pwsh
         run: |
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "ALL DLL FILES"
-          Write-Host "========================================"
+          New-Item -ItemType Directory -Force -Path "packages" | Out-Null
 
-          $dlls = Get-ChildItem "shdn" -Filter "*.dll" -Recurse -ErrorAction SilentlyContinue
+          Invoke-WebRequest `
+            -Uri "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" `
+            -OutFile "nuget.exe"
 
-          if ($dlls) {
-            $dlls | Select-Object FullName, Length | Format-Table -AutoSize
-          }
-          else {
-            Write-Host "NO DLL FILES FOUND"
-          }
+          .\nuget.exe install Microsoft.NETFramework.ReferenceAssemblies `
+            -Version 1.0.3 `
+            -OutputDirectory "packages" `
+            -NonInteractive
 
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "ALL ASI FILES"
-          Write-Host "========================================"
+          $ref = Get-ChildItem `
+            "packages\Microsoft.NETFramework.ReferenceAssemblies*" `
+            -Directory `
+            -Recurse |
+            Where-Object { $_.Name -eq "v4.0" } |
+            Select-Object -First 1
 
-          $asis = Get-ChildItem "shdn" -Filter "*.asi" -Recurse -ErrorAction SilentlyContinue
-
-          if ($asis) {
-            $asis | Select-Object FullName, Length | Format-Table -AutoSize
-          }
-          else {
-            Write-Host "NO ASI FILES FOUND"
+          if (-not $ref) {
+            throw ".NET Framework 4.0 reference assemblies were not found."
           }
 
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "ALL EXE FILES"
-          Write-Host "========================================"
+          Write-Host "Found .NET Framework 4.0 reference assemblies:"
+          Write-Host $ref.FullName
 
-          $exes = Get-ChildItem "shdn" -Filter "*.exe" -Recurse -ErrorAction SilentlyContinue
-
-          if ($exes) {
-            $exes | Select-Object FullName, Length | Format-Table -AutoSize
-          }
-          else {
-            Write-Host "NO EXE FILES FOUND"
-          }
-
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "ALL BIN DIRECTORIES"
-          Write-Host "========================================"
-
-          $bins = Get-ChildItem "shdn" -Directory -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -eq "bin" }
-
-          if ($bins) {
-            $bins | Select-Object FullName | Format-Table -AutoSize
-          }
-          else {
-            Write-Host "NO BIN DIRECTORIES FOUND"
-          }
-
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "RECENTLY MODIFIED FILES"
-          Write-Host "========================================"
-
-          Get-ChildItem "shdn" -Recurse -File -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 50 FullName, Length, LastWriteTime |
-            Format-Table -AutoSize
-
-      - name: Check TGHMod project
-        shell: pwsh
-        run: |
-          Write-Host "========================================"
-          Write-Host "Checking TGHMod project..."
-          Write-Host "========================================"
-
-          if (Test-Path "TGHMod.csproj") {
-            Write-Host "TGHMod.csproj FOUND."
-          }
-          else {
-            Write-Host "TGHMod.csproj NOT FOUND."
-            Write-Host "The workflow will stop here because TGHMod cannot be compiled."
-            exit 1
-          }
+          "NET40_REF=$($ref.FullName)" >> $env:GITHUB_ENV
 
       - name: Build TGHMod
         shell: pwsh
         run: |
-          Write-Host "========================================"
-          Write-Host "Building TGHMod..."
-          Write-Host "========================================"
-
-          msbuild "TGHMod.csproj" /p:Configuration=Release /p:Platform=x86 /m
-
-          if ($LASTEXITCODE -ne 0) {
-            throw "TGHMod build failed with exit code $LASTEXITCODE."
+          if (-not (Test-Path "TGHMod.csproj")) {
+            throw "TGHMod.csproj not found."
           }
 
-          Write-Host ""
-          Write-Host "========================================"
-          Write-Host "TGHMod build completed."
-          Write-Host "========================================"
+          Write-Host "Building TGHMod against .NET Framework 4.0..."
 
-          Write-Host ""
+          msbuild "TGHMod.csproj" `
+            /p:Configuration=Release `
+            /p:Platform=x86 `
+            /p:TargetFrameworkRootPath="$env:NET40_REF\..\.." `
+            /m
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "TGHMod build failed."
+          }
+
+          Write-Host "TGHMod build completed successfully."
+
+      - name: Show TGHMod output
+        shell: pwsh
+        run: |
           Write-Host "TGHMod output files:"
-          Get-ChildItem "bin" -Recurse -File -ErrorAction SilentlyContinue |
-            Select-Object FullName, Length |
-            Format-Table -AutoSize
+
+          if (Test-Path "bin") {
+            Get-ChildItem "bin" -Recurse -File |
+              Select-Object FullName, Length |
+              Format-Table -AutoSize
+          }
+          else {
+            throw "bin directory was not created."
+          }
 
       - name: Prepare final package
         shell: pwsh
         run: |
-          Write-Host "========================================"
-          Write-Host "Preparing final package..."
-          Write-Host "========================================"
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path "release\scripts" | Out-Null
 
-          New-Item -ItemType Directory -Force -Path "release\scripts" | Out-Null
-
-          $tgh = Get-ChildItem "bin" -Filter "TGHMod.net.dll" -Recurse -ErrorAction SilentlyContinue |
+          $tgh = Get-ChildItem `
+            "bin" `
+            -Filter "TGHMod.net.dll" `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
             Select-Object -First 1
 
           if (-not $tgh) {
-            Write-Host "TGHMod.net.dll was not found."
-            Write-Host "Available files:"
-            Get-ChildItem "bin" -Recurse -File -ErrorAction SilentlyContinue |
-              Select-Object FullName, Length |
-              Format-Table -AutoSize
-
             throw "TGHMod.net.dll was not produced."
           }
 
-          Copy-Item $tgh.FullName "release\scripts\TGHMod.dll" -Force
+          Copy-Item `
+            $tgh.FullName `
+            "release\scripts\TGHMod.dll" `
+            -Force
 
           if (Test-Path "ScriptHookDotNet.asi") {
-            Copy-Item "ScriptHookDotNet.asi" "release\ScriptHookDotNet.asi" -Force
+            Copy-Item `
+              "ScriptHookDotNet.asi" `
+              "release\ScriptHookDotNet.asi" `
+              -Force
           }
 
           if (Test-Path "aCompleteEditionHook.asi") {
-            Copy-Item "aCompleteEditionHook.asi" "release\aCompleteEditionHook.asi" -Force
+            Copy-Item `
+              "aCompleteEditionHook.asi" `
+              "release\aCompleteEditionHook.asi" `
+              -Force
           }
-
-          Write-Host ""
-          Write-Host "Final package contents:"
-          Get-ChildItem "release" -Recurse -File |
-            Select-Object FullName, Length |
-            Format-Table -AutoSize
 
       - name: Upload final package
         uses: actions/upload-artifact@v4
