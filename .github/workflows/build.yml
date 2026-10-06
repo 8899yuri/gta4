@@ -19,7 +19,7 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Restore TGHMod
+      - name: Restore
         shell: cmd
         run: |
           dotnet restore TGHMod.csproj
@@ -34,7 +34,7 @@ jobs:
         run: |
           if not exist release\scripts mkdir release\scripts
 
-          copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.net.dll
+          copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.dll
           copy ScriptHookDotNet.asi release\ScriptHookDotNet.asi
           copy aCompleteEditionHook.asi release\aCompleteEditionHook.asi
           copy AdvancedHook.dll release\AdvancedHook.dll
