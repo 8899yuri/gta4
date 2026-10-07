@@ -42,15 +42,21 @@ jobs:
           path: api_dump
 
       - name: Prepare Package
-        shell: cmd
+        shell: pwsh
         run: |
-          if not exist release\scripts mkdir release\scripts
-
-          copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.dll
-          copy ScriptHookDotNet.asi release\ScriptHookDotNet.asi
-          copy aCompleteEditionHook.asi release\aCompleteEditionHook.asi
-          copy AdvancedHook.dll release\AdvancedHook.dll
-          copy AdvancedHookInit.asi release\AdvancedHookInit.asi
+          New-Item -ItemType Directory -Force -Path release\scripts | Out-Null
+          
+          # 全局搜索生成的 DLL，不管它在哪一层目录
+          $dll = Get-ChildItem -Path bin -Filter TGHMod.net.dll -Recurse | Select-Object -First 1
+          if (-not $dll) { throw "TGHMod.net.dll not found after build!" }
+          
+          Write-Host "Found DLL at: $($dll.FullName)"
+          Copy-Item $dll.FullName release\scripts\TGHMod.net.dll
+          
+          Copy-Item ScriptHookDotNet.asi release\ScriptHookDotNet.asi
+          Copy-Item aCompleteEditionHook.asi release\aCompleteEditionHook.asi
+          Copy-Item AdvancedHook.dll release\AdvancedHook.dll
+          Copy-Item AdvancedHookInit.asi release\AdvancedHookInit.asi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
