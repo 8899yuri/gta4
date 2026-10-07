@@ -1,6 +1,33 @@
-      # 把下面这两个 step 加到 build.yml 的 steps 里（和其他 step 缩进对齐）
-      # 作用：在 GitHub 上反编译 ScriptHookDotNet.dll，导出它真实的 API，
-      # 这样不用电脑也能看到正确的类名和方法名。
+name: Build TGHMod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore TGHMod
+        shell: cmd
+        run: |
+          dotnet restore TGHMod.csproj
+
+      - name: Build TGHMod
+        shell: cmd
+        run: |
+          dotnet build TGHMod.csproj -c Release --no-restore -p:Platform=x86
 
       - name: Dump ScriptHookDotNet API
         shell: pwsh
@@ -13,3 +40,20 @@
         with:
           name: api_dump
           path: api_dump
+
+      - name: Prepare Package
+        shell: cmd
+        run: |
+          if not exist release\scripts mkdir release\scripts
+
+          copy bin\Release\TGHMod.net.dll release\scripts\TGHMod.dll
+          copy ScriptHookDotNet.asi release\ScriptHookDotNet.asi
+          copy aCompleteEditionHook.asi release\aCompleteEditionHook.asi
+          copy AdvancedHook.dll release\AdvancedHook.dll
+          copy AdvancedHookInit.asi release\AdvancedHookInit.asi
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TGHMod-GTAIV-CE-FINAL
+          path: release
